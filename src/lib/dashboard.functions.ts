@@ -9,6 +9,8 @@ export const getDashboardOverview = createServerFn({ method: "GET" })
     const { resolveActiveWorkspace } = await import("./workspaces.server");
     const { trackedQrScopeSql, scanTrend } = await import("./dashboard-scope");
     const { workspaceId } = await resolveActiveWorkspace(context.userId);
+    const { dashboardCache } = await import("./dashboard-cache");
+    return dashboardCache.get(`${context.userId}:${workspaceId ?? "personal"}`, async () => {
     const f = trackedQrScopeSql({ userId: context.userId, workspaceId });
     const rows = (await sql.query(
       `with t as (select t.id from public.tracked_qrs t where ${f.where}),
@@ -23,4 +25,5 @@ export const getDashboardOverview = createServerFn({ method: "GET" })
     )) as { tracked: number; scans: number; saved: number; days: { day: string; n: number }[] }[];
     const r = rows[0] ?? { tracked: 0, scans: 0, saved: 0, days: [] };
     return { saved: workspaceId ? 0 : r.saved, tracked: r.tracked, scans: r.scans, trend: scanTrend(r.days) };
+    });
   });

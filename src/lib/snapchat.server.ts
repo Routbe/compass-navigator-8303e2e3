@@ -43,6 +43,7 @@ export function signSnapState(userId: string, now = Date.now()): string {
 }
 
 export function verifySnapState(state: string, now = Date.now()): string | null {
+  if (!process.env["SNAPCHAT_CLIENT_SECRET"]) return null;
   const parts = state.split(".");
   if (parts.length !== 4 || parts[0] !== "snap") return null;
   const [, userId, ts, sig] = parts as [string, string, string, string];

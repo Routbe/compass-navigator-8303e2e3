@@ -11615,7 +11615,8 @@
         }
       ],
       "indexes": [
-        "CREATE INDEX qr_scans_qr_idx ON public.qr_scans USING btree (tracked_qr_id, scanned_at)"
+        "CREATE INDEX qr_scans_qr_idx ON public.qr_scans USING btree (tracked_qr_id, scanned_at)",
+        "CREATE INDEX qr_scans_qr_recent_idx ON public.qr_scans USING btree (tracked_qr_id, scanned_at DESC)"
       ],
       "triggers": [],
       "rls": false,
@@ -13583,8 +13584,10 @@
         }
       ],
       "indexes": [
+        "CREATE INDEX tracked_qrs_personal_idx ON public.tracked_qrs USING btree (user_id, created_at DESC) WHERE (workspace_id IS NULL)",
         "CREATE INDEX tracked_qrs_user_id_idx ON public.tracked_qrs USING btree (user_id)",
         "CREATE INDEX tracked_qrs_user_idx ON public.tracked_qrs USING btree (user_id)",
+        "CREATE INDEX tracked_qrs_workspace_created_idx ON public.tracked_qrs USING btree (workspace_id, created_at DESC) WHERE (workspace_id IS NOT NULL)",
         "CREATE INDEX tracked_qrs_workspace_idx ON public.tracked_qrs USING btree (workspace_id) WHERE (workspace_id IS NOT NULL)"
       ],
       "triggers": [
@@ -17036,7 +17039,7 @@
         {
           "name": "workspaces_plan_check",
           "kind": "c",
-          "def": "CHECK ((plan = ANY (ARRAY['free'::text, 'pro'::text, 'business'::text])))"
+          "def": "CHECK ((plan = ANY (ARRAY['free'::text, 'plus'::text, 'pro'::text, 'business'::text])))"
         },
         {
           "name": "workspaces_slug_check",
