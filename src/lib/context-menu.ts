@@ -22,7 +22,7 @@ export function contextLinks(ctx: MenuContext): MenuLink[] {
   return [
     { key: "studio", label: "Workspace Studio", to: scopedPath(slug, "studio") },
     { key: "dashboard", label: "Workspace Dashboard", to: scopedPath(slug, "dashboard") },
-    { key: "settings", label: "Workspace-instellingen", to: `/studio/w/${encodeURIComponent(slug)}/settings` },
+    { key: "settings", label: "Workspace Instellingen", to: `/studio/w/${encodeURIComponent(slug)}/settings` },
   ];
 }
 
