@@ -30,7 +30,12 @@ export function snapchatRedirectUri(_origin?: Request | string): string {
   return SNAPCHAT_REDIRECT_URI;
 }
 
-const mac = (p: string) => createHmac("sha256", process.env["SNAPCHAT_CLIENT_SECRET"]!).update(p).digest("hex").slice(0, 32);
+function snapSecret(): string {
+  const k = process.env["SNAPCHAT_CLIENT_SECRET"];
+  if (!k) throw new Error("not_configured: Snapchat");
+  return k;
+}
+const mac = (p: string) => createHmac("sha256", snapSecret()).update(p).digest("hex").slice(0, 32);
 
 export function signSnapState(userId: string, now = Date.now()): string {
   const p = `snap.${userId}.${now}`;
@@ -38,6 +43,7 @@ export function signSnapState(userId: string, now = Date.now()): string {
 }
 
 export function verifySnapState(state: string, now = Date.now()): string | null {
+  if (!process.env["SNAPCHAT_CLIENT_SECRET"]) return null;
   const parts = state.split(".");
   if (parts.length !== 4 || parts[0] !== "snap") return null;
   const [, userId, ts, sig] = parts as [string, string, string, string];
