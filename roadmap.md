@@ -9,7 +9,8 @@
 - [x] Fase 4c: db/0122 suffix-trigger + root-alias (rout.be/<naam>, Early Verified telt mee), workspace-instellingen met naam/adres/team/domein/gevarenzone, menulabels + schild-icoon
 - [x] Taak 5: dashboard al één query; db/0123 indexen + plus als plan; 60 s SWR-cache per gebruiker+scope
 - [x] Taak 6: Snapchat zonder sleutels veilig, duidelijke Scaleway-melding, seal-script klaar
-- [ ] Taak 7: migraties t/m 0123 + RLS op Neon, CREATE intrekken, BYPASSRLS/password_hash weg (wacht op DATABASE_URL)
+- [x] Taak 7a: migraties 0118–0123 + RLS-policies op Neon toegepast
+- [ ] Taak 7b: CREATE intrekken, BYPASSRLS/password_hash weg — wacht op deploy naar rout.be + akkoord gebruiker
 - [x] Fase 5: db/0120 RLS-policies (70 tabellen, geheime tabellen bewust dicht), db/0121 users.auth_user_id → neon_auth.user (cascade), password_hash gemarkeerd als verouderd; snapshot via replay
 - [x] tsgo 0 fouten, 861 tests groen, snapshot via scripts/schema-replay-snapshot.ts
 - [ ] Acceptatie live: volledige Vitest-suite, replay/catalog/no-runtime-DDL en ingelogde end-to-end controles
