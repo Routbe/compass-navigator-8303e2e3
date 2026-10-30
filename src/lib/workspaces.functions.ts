@@ -217,3 +217,175 @@ export const claimCleanWorkspaceSlug = createServerFn({ method: "POST" })
     }
     return { slug };
   });
+
+/** Early Verified bonus of the workspace owner (PRO_FOR_LIFE override), mirrored by db/0122. */
+async function ownerEarlyVerified(workspaceId: string): Promise<boolean> {
+  const { sql } = await import("@/lib/neon");
+  const rows = (await sql`select 1 from public.workspace_members m
+      join public.entitlement_overrides o on o.scope_type = 'user' and o.scope_id = m.user_id
+       and o.entitlement_key = 'PRO_FOR_LIFE' and o.value = 'true'
+     where m.workspace_id = ${workspaceId} and m.role = 'owner' limit 1`) as unknown[];
+  return rows.length > 0;
+}
+
+function workspaceDomainKey(): string {
+  const k = process.env["ROUT_PROVIDER_SIGNING_KEK"];
+  if (!k || k.length < 32) throw new Error("Domeinverificatie is nog niet ingesteld op deze server.");
+  return k;
+}
+
+export type WorkspaceSettings = {
+  id: string; name: string; slug: string; plan: string; role: WorkspaceRole;
+  earlyVerified: boolean; canDropSuffix: boolean; rootAlias: string | null;
+  domain: { name: string; verified: boolean; recordName: string; recordValue: string | null } | null;
+};
+
+/** Everything the workspace settings page shows. Members only. */
+export const getWorkspaceSettings = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid }).parse(d))
+  .handler(async ({ data, context }): Promise<WorkspaceSettings> => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    const { workspaceEffectivePlan } = await import("./entitlement-engine.server");
+    const { planAllowsCleanSlug } = await import("./workspace-rules");
+    const role = await getWorkspaceRole(context.userId, data.workspaceId);
+    if (!role) throw new Error("Forbidden");
+    const ws = ((await sql`select w.name, w.slug, w.domain, w.domain_verified_at,
+        (select handle from public.workspace_root_aliases a where a.workspace_id = w.id) as root_alias
+      from public.workspaces w where w.id = ${data.workspaceId} limit 1`) as Record<string, unknown>[])[0];
+    if (!ws) throw new Error("Workspace niet gevonden.");
+    const plan = await workspaceEffectivePlan(data.workspaceId);
+    const earlyVerified = await ownerEarlyVerified(data.workspaceId);
+    let domain: WorkspaceSettings["domain"] = null;
+    if (ws["domain"]) {
+      const { claimRecordName, claimRecordValue } = await import("./domain-claim-rules");
+      const name = String(ws["domain"]);
+      let recordValue: string | null = null;
+      try { recordValue = await claimRecordValue(workspaceDomainKey(), data.workspaceId, name); } catch { recordValue = null; }
+      domain = { name, verified: Boolean(ws["domain_verified_at"]), recordName: claimRecordName(name), recordValue };
+    }
+    return {
+      id: data.workspaceId, name: String(ws["name"]), slug: String(ws["slug"]), plan, role, earlyVerified,
+      canDropSuffix: planAllowsCleanSlug(plan, { earlyVerified }),
+      rootAlias: (ws["root_alias"] as string | null) ?? null, domain,
+    };
+  });
+
+export const renameWorkspace = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid, name: z.string().max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    const { checkWorkspaceRename } = await import("./workspace-rules");
+    const err = checkWorkspaceRename(await getWorkspaceRole(context.userId, data.workspaceId), data.name);
+    if (err) throw new Error(err);
+    await sql`update public.workspaces set name = ${data.name.trim()} where id = ${data.workspaceId}`;
+    return { name: data.name.trim() };
+  });
+
+async function rootSlugDecision(userId: string, workspaceId: string, slug: string) {
+  const { sql } = await import("@/lib/neon");
+  const { workspaceEffectivePlan } = await import("./entitlement-engine.server");
+  const { hasBrandRelease } = await import("./reserved-brands.server");
+  const { isReservedName } = await import("./reserved-brands");
+  const { findHandleOwner } = await import("./handle-namespace.server");
+  const { RESERVED_SLUGS } = await import("./reserved-slugs");
+  const { checkRootSlugClaim } = await import("./workspace-rules");
+  const reserved = isReservedName(slug).reserved;
+  const other = (await sql`select 1 from public.workspace_root_aliases where handle = ${slug} and workspace_id <> ${workspaceId} limit 1`) as unknown[];
+  return checkRootSlugClaim({
+    plan: await workspaceEffectivePlan(workspaceId),
+    earlyVerified: await ownerEarlyVerified(workspaceId),
+    slug,
+    reserved,
+    brandReleased: reserved ? await hasBrandRelease(userId, slug) : false,
+    takenByHandle: other.length > 0 || (await findHandleOwner(slug)) !== null,
+    systemRoute: RESERVED_SLUGS.has(slug),
+  });
+}
+
+/** Live availability check for the root address field. Owner/admin only. */
+export const checkRootWorkspaceSlug = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid, slug: z.string().trim().toLowerCase().max(40) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    if (!canManageTeam(await getWorkspaceRole(context.userId, data.workspaceId))) throw new Error("Forbidden");
+    return { error: await rootSlugDecision(context.userId, data.workspaceId, data.slug) };
+  });
+
+/** Claims rout.be/<slug> for a workspace (stored in workspace_root_aliases). Owner/admin only. */
+export const claimRootWorkspaceSlug = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid, slug: z.string().trim().toLowerCase().max(40) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    if (!canManageTeam(await getWorkspaceRole(context.userId, data.workspaceId))) throw new Error("Alleen eigenaars en admins wijzigen het workspace-adres.");
+    const err = await rootSlugDecision(context.userId, data.workspaceId, data.slug);
+    if (err) throw new Error(err);
+    try {
+      await sql`insert into public.workspace_root_aliases (handle, workspace_id) values (${data.slug}, ${data.workspaceId})
+                on conflict (workspace_id) do update set handle = excluded.handle, created_at = now()`;
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new Error("Dit adres is al in gebruik.");
+      throw e;
+    }
+    return { handle: data.slug };
+  });
+
+export const setWorkspaceDomain = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid, domain: z.string().trim().toLowerCase().max(253).nullable() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    if (!canManageTeam(await getWorkspaceRole(context.userId, data.workspaceId))) throw new Error("Alleen eigenaars en admins beheren domeinen.");
+    const domain = data.domain?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null;
+    if (domain && !/^(?=.{3,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/.test(domain)) throw new Error("Vul een geldige domeinnaam in, bijvoorbeeld acme.be.");
+    try {
+      await sql`update public.workspaces set domain = ${domain}, domain_verified_at = null where id = ${data.workspaceId}`;
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new Error("Dit domein is al gekoppeld aan een andere workspace.");
+      throw e;
+    }
+    return { ok: true as const };
+  });
+
+/** Checks the TXT record _rout.<domain> with the existing DNS lookup. */
+export const verifyWorkspaceDomain = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole } = await import("./workspaces.server");
+    const { claimRecordName, claimRecordValue } = await import("./domain-claim-rules");
+    const { query } = await import("./domains.server");
+    if (!canManageTeam(await getWorkspaceRole(context.userId, data.workspaceId))) throw new Error("Alleen eigenaars en admins beheren domeinen.");
+    const row = ((await sql`select domain from public.workspaces where id = ${data.workspaceId}`) as { domain: string | null }[])[0];
+    if (!row?.domain) throw new Error("Koppel eerst een domein.");
+    const expected = await claimRecordValue(workspaceDomainKey(), data.workspaceId, row.domain);
+    const records = await query(claimRecordName(row.domain), "TXT");
+    const ok = records.some((r) => r.replace(/"\s*"/g, "") === expected);
+    if (ok) await sql`update public.workspaces set domain_verified_at = now() where id = ${data.workspaceId}`;
+    return { verified: ok };
+  });
+
+/** Deletes the workspace. Owner only, after typing the exact name; FKs cascade members, invites and assets. */
+export const deleteWorkspace = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: uuid, confirmation: z.string().max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { sql } = await import("@/lib/neon");
+    const { getWorkspaceRole, setActiveWorkspaceCookie } = await import("./workspaces.server");
+    const { checkWorkspaceDelete } = await import("./workspace-rules");
+    const ws = ((await sql`select name from public.workspaces where id = ${data.workspaceId}`) as { name: string }[])[0];
+    if (!ws) throw new Error("Workspace niet gevonden.");
+    const err = checkWorkspaceDelete(await getWorkspaceRole(context.userId, data.workspaceId), ws.name, data.confirmation);
+    if (err) throw new Error(err);
+    await sql`delete from public.workspaces where id = ${data.workspaceId}`;
+    await setActiveWorkspaceCookie(null);
+    return { ok: true as const };
+  });
