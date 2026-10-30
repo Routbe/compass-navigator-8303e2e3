@@ -20,7 +20,8 @@ const BUCKET_ENV: Record<BucketKind, string> = {
 
 export class StorageNotConfigured extends Error {
   constructor() {
-    super("not_configured: Scaleway Object Storage");
+    super("not_configured: Scaleway Object Storage — bestandsopslag is nog niet ingesteld (sleutels of bucket ontbreken). Uploaden, ook van video's, kan pas zodra die zijn toegevoegd.");
+    this.name = "StorageNotConfigured";
   }
 }
 
