@@ -17,7 +17,7 @@ import { sql } from "@/lib/neon";
 
 type Row = Record<string, unknown>;
 
-export type HandleSlot = "root" | "alias" | "root_domain" | "dns_claim";
+export type HandleSlot = "root" | "alias" | "root_domain" | "dns_claim" | "workspace_root";
 
 export type HandleOwner = { userId: string; slot: HandleSlot };
 
@@ -57,6 +57,12 @@ export async function findHandleOwner(handle: string): Promise<HandleOwner | nul
      where handle = ${h} and status in ('verified', 'grace') limit 1
   `.catch(() => [])) as Row[];
   if (claimRows[0]) return { userId: claimRows[0]["user_id"] as string, slot: "dns_claim" };
+
+  // A workspace root alias (db/0122) shares the namespace; userId carries the workspace id.
+  const wsRows = (await sql`
+    select workspace_id from public.workspace_root_aliases where handle = ${h} limit 1
+  `.catch(() => [])) as Row[];
+  if (wsRows[0]) return { userId: wsRows[0]["workspace_id"] as string, slot: "workspace_root" };
 
   return null;
 }

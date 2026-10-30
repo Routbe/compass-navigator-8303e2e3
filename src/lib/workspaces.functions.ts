@@ -207,7 +207,7 @@ export const claimCleanWorkspaceSlug = createServerFn({ method: "POST" })
     const reserved = isReservedName(slug).reserved;
     const brandReleased = reserved ? await hasBrandRelease(context.userId, slug) : false;
     const taken = ((await sql`select 1 from public.workspaces where lower(slug) = ${slug} and id <> ${data.workspaceId} limit 1`) as unknown[]).length > 0;
-    const error = checkCleanSlugClaim({ plan, slug, currentSlug: ws.slug, reserved, brandReleased, taken });
+    const error = checkCleanSlugClaim({ plan, earlyVerified: await ownerEarlyVerified(data.workspaceId), slug, currentSlug: ws.slug, reserved, brandReleased, taken });
     if (error) throw new Error(error);
     try {
       await sql`update public.workspaces set slug = ${slug} where id = ${data.workspaceId}`;

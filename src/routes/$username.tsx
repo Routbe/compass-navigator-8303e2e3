@@ -131,6 +131,11 @@ export const Route = createFileRoute("/$username")({
     } catch {
       row = null;
     }
+    if (!row) {
+      const { resolveWorkspaceRootAlias } = await import("@/lib/workspace-public.functions");
+      const wsSlug = await resolveWorkspaceRootAlias({ data: { handle } }).catch(() => null);
+      if (wsSlug) throw redirect({ to: "/w/$slug", params: { slug: wsSlug }, statusCode: 301 });
+    }
     return { handle, locale, profile: row };
   },
   head: ({ loaderData }) => {
