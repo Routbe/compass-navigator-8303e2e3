@@ -6,6 +6,10 @@
 - [x] Nulmeting 30/10: tsgo 0 fouten, 865 tests groen na snapshot-refresh (0117/0118)
 - [x] Fase 4a: merkbescherming (db/0116, isReservedName op handles/aliassen/workspaces) + namespace matrix (gratis = 4-teken suffix)
 - [x] Fase 4b: schone slug bij Plus/Pro (met merkvrijgave), Team naar /studio/w/$slug/settings, workspace-quotum in Bestanden en media (30/10)
+- [x] Fase 4c: db/0122 suffix-trigger + root-alias (rout.be/<naam>, Early Verified telt mee), workspace-instellingen met naam/adres/team/domein/gevarenzone, menulabels + schild-icoon
+- [ ] Taak 5: dashboard-performance (LATERAL JOIN, db/0123 indexen, SWR-cache)
+- [ ] Taak 6: controles Snapchat/Scaleway/seal-signing-keys
+- [ ] Taak 7: migraties + RLS op Neon (wacht op DATABASE_URL)
 - [x] Fase 5: db/0120 RLS-policies (70 tabellen, geheime tabellen bewust dicht), db/0121 users.auth_user_id → neon_auth.user (cascade), password_hash gemarkeerd als verouderd; snapshot via replay
 - [x] tsgo 0 fouten, 861 tests groen, snapshot via scripts/schema-replay-snapshot.ts
 - [ ] Acceptatie live: volledige Vitest-suite, replay/catalog/no-runtime-DDL en ingelogde end-to-end controles
