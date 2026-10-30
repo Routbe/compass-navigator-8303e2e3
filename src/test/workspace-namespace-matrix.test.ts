@@ -32,8 +32,7 @@ describe("db/0122 slug suffix trigger (PGlite)", () => {
   it("keeps an existing suffix on free", async () => {
     expect(await slugOf("Beta", "beta-k4f9", "free")).toBe("beta-k4f9");
   });
-  it("allows a clean slug on plus, pro and business", async () => {
-    expect(await slugOf("Gamma", "gamma", "plus")).toBe("gamma");
+  it("allows a clean slug on pro and business (plus comes via an override)", async () => {
     expect(await slugOf("Delta", "delta", "pro")).toBe("delta");
     expect(await slugOf("Eps", "epsilon", "business")).toBe("epsilon");
   });
