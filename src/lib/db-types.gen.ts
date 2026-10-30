@@ -1744,6 +1744,12 @@ export interface PublicWorkspaceMembersRow {
   "created_at": string | Date;
 }
 
+export interface PublicWorkspaceRootAliasesRow {
+  "handle": string;
+  "workspace_id": string;
+  "created_at": string | Date;
+}
+
 export interface PublicWorkspaceTransfersRow {
   "id": string;
   "source_user_id": string;
@@ -1937,6 +1943,7 @@ export interface DbTables {
   "public.webhook_events": PublicWebhookEventsRow;
   "public.workspace_invites": PublicWorkspaceInvitesRow;
   "public.workspace_members": PublicWorkspaceMembersRow;
+  "public.workspace_root_aliases": PublicWorkspaceRootAliasesRow;
   "public.workspace_transfers": PublicWorkspaceTransfersRow;
   "public.workspaces": PublicWorkspacesRow;
   "storage.buckets": StorageBucketsRow;

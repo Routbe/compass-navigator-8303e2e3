@@ -16666,6 +16666,84 @@
     },
     {
       "schema": "public",
+      "name": "workspace_root_aliases",
+      "columns": [
+        {
+          "name": "handle",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "workspace_id",
+          "type": "uuid",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "now()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "workspace_root_aliases_handle_check",
+          "kind": "c",
+          "def": "CHECK (((handle = lower(handle)) AND (handle ~ '^[a-z0-9-]{3,40}$'::text)))"
+        },
+        {
+          "name": "workspace_root_aliases_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (handle)"
+        },
+        {
+          "name": "workspace_root_aliases_workspace_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE"
+        },
+        {
+          "name": "workspace_root_aliases_workspace_id_key",
+          "kind": "u",
+          "def": "UNIQUE (workspace_id)"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER workspace_root_aliases_rules BEFORE INSERT OR UPDATE ON public.workspace_root_aliases FOR EACH ROW EXECUTE FUNCTION enforce_workspace_root_alias()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "rout_scope",
+          "permissive": true,
+          "roles": [
+            "rout_app"
+          ],
+          "cmd": "ALL",
+          "using": "rout_is_workspace_member(workspace_id)",
+          "check": "rout_is_workspace_member(workspace_id)"
+        }
+      ],
+      "grants": {
+        "rout_app": [
+          "DELETE",
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      }
+    },
+    {
+      "schema": "public",
       "name": "workspace_transfers",
       "columns": [
         {
@@ -16972,7 +17050,9 @@
         }
       ],
       "indexes": [],
-      "triggers": [],
+      "triggers": [
+        "CREATE TRIGGER workspaces_slug_suffix BEFORE INSERT OR UPDATE OF slug, plan ON public.workspaces FOR EACH ROW EXECUTE FUNCTION enforce_workspace_slug_suffix()"
+      ],
       "rls": false,
       "forceRls": false,
       "policies": [],
@@ -17230,6 +17310,18 @@
     },
     {
       "schema": "public",
+      "name": "enforce_workspace_root_alias",
+      "args": "",
+      "def": "CREATE OR REPLACE FUNCTION public.enforce_workspace_root_alias()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\n  declare ws_plan text;\n  begin\n    select plan into ws_plan from public.workspaces where id = new.workspace_id;\n    if not public.workspace_may_drop_suffix(ws_plan, new.workspace_id) then\n      raise exception 'workspace_root_alias_requires_plan' using errcode = '42501';\n    end if;\n    if exists (select 1 from public.profiles p\n                where lower(p.username) = new.handle or lower(coalesce(p.subdomain_alias, '')) = new.handle)\n       or exists (select 1 from public.alias_profiles a where lower(a.handle) = new.handle) then\n      raise exception 'workspace_root_alias_taken' using errcode = '23505';\n    end if;\n    return new;\n  end\n  $function$"
+    },
+    {
+      "schema": "public",
+      "name": "enforce_workspace_slug_suffix",
+      "args": "",
+      "def": "CREATE OR REPLACE FUNCTION public.enforce_workspace_slug_suffix()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\n  begin\n    new.slug := lower(new.slug);\n    if new.slug !~ '-[a-z0-9]{4}$' and not public.workspace_may_drop_suffix(new.plan, new.id) then\n      new.slug := left(new.slug, 35) || '-' || substr(md5(gen_random_uuid()::text), 1, 4);\n    end if;\n    return new;\n  end\n  $function$"
+    },
+    {
+      "schema": "public",
       "name": "generate_unique_handle",
       "args": "_seed text",
       "def": "CREATE OR REPLACE FUNCTION public.generate_unique_handle(_seed text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  base text;\n  candidate text;\n  i int := 0;\nbegin\n  base := regexp_replace(lower(coalesce(_seed, 'member')), '[^a-z0-9]+', '', 'g');\n  if length(base) < 3 then base := base || 'member'; end if;\n  base := left(base, 20);\n  candidate := base;\n  while not public.is_handle_available(candidate) loop\n    i := i + 1;\n    candidate := left(base, 20) || i::text;\n    exit when i > 9999;\n  end loop;\n  return candidate;\nend;\n$function$"
@@ -17401,6 +17493,18 @@
       "name": "wallet_debit",
       "args": "_user_id uuid, _amount_cents integer, _description text, _reference text",
       "def": "CREATE OR REPLACE FUNCTION public.wallet_debit(_user_id uuid, _amount_cents integer, _description text DEFAULT NULL::text, _reference text DEFAULT NULL::text)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  _balance integer;\nbegin\n  if _amount_cents is null or _amount_cents <= 0 then\n    raise exception 'wallet_debit: amount must be positive';\n  end if;\n\n  insert into public.wallets (user_id) values (_user_id)\n  on conflict (user_id) do nothing;\n\n  select balance_cents into _balance\n    from public.wallets where user_id = _user_id for update;\n\n  if _balance is null or _balance < _amount_cents then\n    return -1; -- onvoldoende saldo; niets geboekt\n  end if;\n\n  begin\n    insert into public.wallet_transactions\n      (user_id, kind, amount_cents, description, reference)\n    values (_user_id, 'relay_fee', -_amount_cents, _description, _reference);\n  exception when unique_violation then\n    return _balance; -- deze periode al afgeschreven\n  end;\n\n  update public.wallets\n     set balance_cents = balance_cents - _amount_cents\n   where user_id = _user_id\n   returning balance_cents into _balance;\n\n  return _balance;\nend $function$"
+    },
+    {
+      "schema": "public",
+      "name": "workspace_may_drop_suffix",
+      "args": "ws_plan text, ws uuid",
+      "def": "CREATE OR REPLACE FUNCTION public.workspace_may_drop_suffix(ws_plan text, ws uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n    select coalesce(ws_plan, 'free') in ('plus', 'pro', 'business')\n      or exists (select 1 from public.entitlement_overrides o\n                  where o.scope_type = 'workspace' and o.scope_id = ws\n                    and o.entitlement_key = 'WORKSPACE_PLAN' and o.value in ('plus', 'pro', 'business'))\n      or exists (select 1 from public.workspace_members m\n                   join public.entitlement_overrides o\n                     on o.scope_type = 'user' and o.scope_id = m.user_id\n                    and o.entitlement_key = 'PRO_FOR_LIFE' and o.value = 'true'\n                  where m.workspace_id = ws and m.role = 'owner')\n  $function$"
+    },
+    {
+      "schema": "public",
+      "name": "workspace_slug_for_root_alias",
+      "args": "h text",
+      "def": "CREATE OR REPLACE FUNCTION public.workspace_slug_for_root_alias(h text)\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$ select w.slug from public.workspace_root_aliases a join public.workspaces w on w.id = a.workspace_id\n         where a.handle = lower(h) limit 1 $function$"
     },
     {
       "schema": "public",

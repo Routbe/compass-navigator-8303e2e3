@@ -66,3 +66,11 @@ alter table public.workspace_root_aliases enable row level security;
 create policy rout_scope on public.workspace_root_aliases to rout_app
   using (public.rout_is_workspace_member(workspace_id))
   with check (public.rout_is_workspace_member(workspace_id));
+
+-- Public lookup for rout.be/<handle> → workspace slug, without opening the table to visitors.
+create or replace function public.workspace_slug_for_root_alias(h text) returns text
+  language sql stable security definer set search_path = public
+  as $$ select w.slug from public.workspace_root_aliases a join public.workspaces w on w.id = a.workspace_id
+         where a.handle = lower(h) limit 1 $$;
+revoke all on function public.workspace_slug_for_root_alias(text) from public;
+grant execute on function public.workspace_slug_for_root_alias(text) to rout_app;
