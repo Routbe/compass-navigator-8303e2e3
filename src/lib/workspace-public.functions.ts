@@ -31,3 +31,14 @@ export const getPublicWorkspace = createServerFn({ method: "GET" })
     if (!r) return null;
     return { name: r.name, slug: r.slug, avatarUrl: r.avatar_url, domain: r.domain, profileHandle: r.profile_handle };
   });
+
+/** rout.be/<handle> → workspace slug when the handle is a workspace root alias; null otherwise. */
+export const resolveWorkspaceRootAlias = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ handle: z.string().trim().toLowerCase().max(40) }).parse(d))
+  .handler(async ({ data }): Promise<string | null> => {
+    if (!/^[a-z0-9-]{3,40}$/.test(data.handle)) return null;
+    const { hasDatabase, sql } = await import("@/lib/neon");
+    if (!hasDatabase()) return null;
+    const rows = (await sql`select public.workspace_slug_for_root_alias(${data.handle}) as slug`.catch(() => [])) as { slug: string | null }[];
+    return rows[0]?.slug ?? null;
+  });

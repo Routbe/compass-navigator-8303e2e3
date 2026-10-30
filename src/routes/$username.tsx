@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, redirect, useParams } from "@tanstack/react-router";
+import { resolveWorkspaceRootAlias } from "@/lib/workspace-public.functions";
 import { Loader2 } from "lucide-react";
 import { ProfileLookupError, ProfileMissing, ProfileView } from "@/components/profile/ProfileView";
 import { InviteBanner } from "@/components/profile/InviteBanner";
@@ -130,6 +131,10 @@ export const Route = createFileRoute("/$username")({
       row = (await getPublicProfileByHandle({ data: { handle } })) as Row;
     } catch {
       row = null;
+    }
+    if (!row) {
+      const wsSlug = await resolveWorkspaceRootAlias({ data: { handle } }).catch(() => null);
+      if (wsSlug) throw redirect({ to: "/w/$slug", params: { slug: wsSlug }, statusCode: 301 });
     }
     return { handle, locale, profile: row };
   },

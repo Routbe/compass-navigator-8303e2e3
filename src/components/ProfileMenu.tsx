@@ -23,7 +23,7 @@ import { clearAdminRoleCache } from "@/hooks/useIsAdmin";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useScope, useWorkspaceContext } from "@/components/WorkspaceSwitcher";
 import { DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
-import { ArrowLeftRight, Check as CheckIcon, Plus as PlusIcon, User as UserIcon, Users as UsersIcon } from "lucide-react";
+import { Shield, ArrowLeftRight, Check as CheckIcon, Plus as PlusIcon, User as UserIcon, Users as UsersIcon } from "lucide-react";
 import { canUseDeveloperTools } from "@/lib/workspace-rules";
 import { getMyAccount } from "@/lib/account.functions";
 import { contextBadge, contextLinks, GLOBAL_ACCOUNT_LINK } from "@/lib/context-menu";
@@ -182,7 +182,7 @@ export function ProfileMenu() {
           </div>
           {links.map((l) => (
             <DropdownMenuItem key={l.key} onClick={() => nav(l.to)} className="gap-2">
-              {l.key === "studio" ? <Sparkles className="h-4 w-4 shrink-0" aria-hidden /> : l.key === "dashboard" ? <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden /> : <UsersIcon className="h-4 w-4 shrink-0" aria-hidden />}
+              {l.key === "studio" ? <Sparkles className="h-4 w-4 shrink-0" aria-hidden /> : l.key === "dashboard" ? <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden /> : <Settings className="h-4 w-4 shrink-0" aria-hidden />}
               {l.label}
             </DropdownMenuItem>
           ))}
@@ -198,7 +198,7 @@ export function ProfileMenu() {
 
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => nav(GLOBAL_ACCOUNT_LINK.to)} className="gap-2">
-            <Settings className="h-4 w-4 shrink-0" aria-hidden /> {GLOBAL_ACCOUNT_LINK.label}
+            <Shield className="h-4 w-4 shrink-0" aria-hidden /> {GLOBAL_ACCOUNT_LINK.label}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2 text-destructive"

@@ -89,13 +89,17 @@ export function matrixWorkspaceSlug(name: string, plan: WorkspaceSlugPlan, suffi
   return plan === "free" ? `${base}-${suffix}` : base;
 }
 
-/** Paid plans that may drop the random suffix (Namespace Matrix). */
-export function planAllowsCleanSlug(plan: string): plan is "plus" | "pro" | "business" {
-  return plan === "plus" || plan === "pro" || plan === "business";
+/**
+ * Paid plans (or an Early Verified owner, via the entitlement engine) may drop the random suffix.
+ * Mirrors public.workspace_may_drop_suffix in db/0122.
+ */
+export function planAllowsCleanSlug(plan: string, opts: { earlyVerified?: boolean } = {}): boolean {
+  return plan === "plus" || plan === "pro" || plan === "business" || opts.earlyVerified === true;
 }
 
 export type CleanSlugInput = {
   plan: string;
+  earlyVerified?: boolean;
   slug: string;
   currentSlug: string;
   reserved: boolean;
@@ -105,10 +109,47 @@ export type CleanSlugInput = {
 
 /** Decides a clean-slug claim after an upgrade. Returns a Dutch error message, or null when allowed. */
 export function checkCleanSlugClaim(i: CleanSlugInput): string | null {
-  if (!planAllowsCleanSlug(i.plan)) return "Een schone workspace-naam is beschikbaar vanaf Plus of Pro.";
+  if (!planAllowsCleanSlug(i.plan, { earlyVerified: i.earlyVerified })) return "Een schone workspace-naam is beschikbaar vanaf Plus of Pro, of met Early Verified.";
   if (i.slug === i.currentSlug) return "Dit is al het adres van je workspace.";
   if (i.reserved && !i.brandReleased) return "Deze naam is beschermd. Vraag een merkvrijgave aan bij ROUT.";
   if (!isValidWorkspaceSlug(i.slug, { brandReleased: i.brandReleased })) return "Gebruik minstens 3 tekens: kleine letters, cijfers en koppeltekens.";
   if (i.taken) return "Dit workspace-adres is al in gebruik.";
+  return null;
+}
+
+export type RootSlugInput = {
+  plan: string;
+  earlyVerified?: boolean;
+  slug: string;
+  reserved: boolean;
+  brandReleased: boolean;
+  /** Held by a personal handle, alias, DNS claim or another workspace's root alias. */
+  takenByHandle: boolean;
+  /** Collides with a fixed app route (rout.be/studio, /api, …). */
+  systemRoute: boolean;
+};
+
+/** Root address rout.be/<slug> for a workspace: same plan, brand and uniqueness rules as a clean slug. */
+export function checkRootSlugClaim(i: RootSlugInput): string | null {
+  if (!planAllowsCleanSlug(i.plan, { earlyVerified: i.earlyVerified })) return "Een root-adres is beschikbaar vanaf Plus of Pro, of met Early Verified.";
+  if (i.systemRoute) return "Dit adres is gereserveerd voor ROUT zelf.";
+  if (i.reserved && !i.brandReleased) return "Deze naam is beschermd. Vraag een merkvrijgave aan bij ROUT.";
+  if (!isValidWorkspaceSlug(i.slug, { brandReleased: i.brandReleased })) return "Gebruik minstens 3 tekens: kleine letters, cijfers en koppeltekens.";
+  if (i.takenByHandle) return "Dit adres is al in gebruik door een profiel of een andere workspace.";
+  return null;
+}
+
+/** Rename: owner/admin, 1–80 characters after trimming. */
+export function checkWorkspaceRename(role: WorkspaceRole | null, name: string): string | null {
+  if (!canManageTeam(role)) return "Alleen eigenaars en admins wijzigen de naam.";
+  const n = name.trim();
+  if (!n || n.length > 80) return "Gebruik een naam van 1 tot 80 tekens.";
+  return null;
+}
+
+/** Delete: only the owner, after typing the exact workspace name. */
+export function checkWorkspaceDelete(role: WorkspaceRole | null, workspaceName: string, confirmation: string): string | null {
+  if (role !== "owner") return "Alleen de eigenaar kan deze workspace verwijderen.";
+  if (confirmation.trim() !== workspaceName.trim()) return "Typ de exacte naam van de workspace om te bevestigen.";
   return null;
 }
